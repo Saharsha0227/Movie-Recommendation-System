@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Movie Recommender</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+    <!-- Hero Banner -->
+    <header class="hero">
+        <div class="hero-content">
+            <h1 class="hero-title">🎬 Movie Recommender</h1>
+            <p class="hero-subtitle">Discover movies you'll love — powered by content-based filtering</p>
+
+            <!-- Search Form -->
+            <form id="search-form" class="search-form" autocomplete="off">
+                <input
+                    type="text"
+                    id="movie-input"
+                    class="search-input"
+                    placeholder="Enter a movie title…"
+                    required
+                    aria-label="Movie title"
+                />
+                <button type="submit" class="search-btn">Find Similar</button>
+            </form>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+
+        <!-- Loading Spinner (hidden by default) -->
+        <div id="spinner" class="spinner-container" hidden aria-live="polite" aria-label="Loading recommendations">
+            <div class="spinner"></div>
+            <p class="spinner-text">Finding recommendations…</p>
+        </div>
+
+        <!-- Error Message (hidden by default) -->
+        <div id="error-message" class="error-message" hidden role="alert"></div>
+
+        <!-- Movie Results Row -->
+        <section id="results-section" class="results-section" hidden>
+            <h2 id="results-heading" class="results-heading"></h2>
+            <div id="movie-row" class="movie-row" role="list"></div>
+        </section>
+
+    </main>
+
+    <script>
+        const form = document.getElementById('search-form');
+        const input = document.getElementById('movie-input');
+        const spinner = document.getElementById('spinner');
+        const errorMsg = document.getElementById('error-message');
+        const resultsSection = document.getElementById('results-section');
+        const resultsHeading = document.getElementById('results-heading');
+        const movieRow = document.getElementById('movie-row');
+
+        const PLACEHOLDER_IMG = 'https://via.placeholder.com/200x300?text=No+Poster';
+
+        function showSpinner() {
+            spinner.hidden = false;
+            errorMsg.hidden = true;
+            resultsSection.hidden = true;
+        }
+
+        function hideSpinner() {
+            spinner.hidden = true;
+        }
+
+        function showError(message) {
+            errorMsg.textContent = message;
+            errorMsg.hidden = false;
+        }
+
+        function renderMovieCard(movie) {
+            const card = document.createElement('article');
+            card.className = 'movie-card';
+            card.setAttribute('role', 'listitem');
+
+            const posterSrc = movie.poster_url || PLACEHOLDER_IMG;
+            const ratingText = movie.rating != null
+                ? `<span class="card-rating">⭐ ${Number(movie.rating).toFixed(1)}</span>`
+                : '';
+
+            card.innerHTML = `
+                <div class="card-poster-wrap">
+                    <img
+                        class="card-poster"
+                        src="${escapeHtml(posterSrc)}"
+                        alt="${escapeHtml(movie.title)} poster"
+                        onerror="this.src='${PLACEHOLDER_IMG}'"
+                        loading="lazy"
+                    />
+                </div>
+                <div class="card-info">
+                    <p class="card-title">${escapeHtml(movie.title)}</p>
+                    ${ratingText}
+                </div>
+            `;
+            return card;
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.appendChild(document.createTextNode(String(str)));
+            return div.innerHTML;
+        }
+
+        function renderResults(movies, query) {
+            movieRow.innerHTML = '';
+            resultsHeading.textContent = `Recommendations for "${query}"`;
+
+            movies.forEach((movie, i) => {
+                const card = renderMovieCard(movie);
+                // stagger fade-in
+                card.style.animationDelay = `${i * 60}ms`;
+                movieRow.appendChild(card);
+            });
+
+            resultsSection.hidden = false;
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const query = input.value.trim();
+            if (!query) return;
+
+            showSpinner();
+
+            try {
+                const res = await fetch(`/recommend?movie=${encodeURIComponent(query)}`);
+                const data = await res.json();
+
+                hideSpinner();
+
+                if (!res.ok) {
+                    // 4xx / 5xx
+                    if (res.status === 404) {
+                        showError(`Movie "${query}" was not found. Please check the title and try again.`);
+                    } else {
+                        showError('Something went wrong. Please try again later.');
+                    }
+                    return;
+                }
+
+                if (!Array.isArray(data) || data.length === 0) {
+                    showError('No recommendations found for this title.');
+                    return;
+                }
+
+                renderResults(data, query);
+
+            } catch (err) {
+                hideSpinner();
+                showError('Unable to reach the server. Please check your connection.');
+            }
+        });
+    </script>
+
+</body>
+</html>
